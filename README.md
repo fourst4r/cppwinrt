@@ -1,3 +1,5 @@
+# A fork of cppwinrt modified to generate Reflaxe.CPP Haxe externs (unfinished)
+
 # The C++/WinRT language projection
 
 C++/WinRT is an entirely standard C++ language projection for Windows Runtime (WinRT) APIs, implemented as a header-file-based library, and designed to provide you with first-class access to the modern Windows API. With C++/WinRT, you can author and consume Windows Runtime APIs using any standards-compliant C++17 compiler.
