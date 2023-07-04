@@ -194,7 +194,7 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>$(OutputPath);Generated Files;..\..\..\library</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(OutputPath);Generated Files;C:\Users\oxyge\source\repos\cppwinrt\_build\x64\Debug\winrt;..;..\..\..\library</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>_MBCS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalOptions>%(AdditionalOptions)</AdditionalOptions>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>

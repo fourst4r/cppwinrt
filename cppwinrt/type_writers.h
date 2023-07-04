@@ -597,4 +597,481 @@ namespace cppwinrt
             flush_to_file(filename);
         }
     };
+
+    struct haxe_writer : writer_base<haxe_writer>
+    {
+        using writer_base<haxe_writer>::write;
+
+        struct depends_compare
+        {
+            bool operator()(TypeDef const& left, TypeDef const& right) const
+            {
+                return left.TypeName() < right.TypeName();
+            }
+        };
+
+        std::string type_namespace;
+        std::string package;
+        std::string decl_name;
+        TypeDef type;
+        bool abi_types{};
+        bool delegate_types{};
+        bool param_names{};
+        bool consume_types{};
+        bool async_types{};
+        std::map<std::string_view, std::set<TypeDef, depends_compare>> depends;
+        std::vector<std::vector<std::string>> generic_param_stack;
+
+        struct generic_param_guard
+        {
+            explicit generic_param_guard(haxe_writer* arg = nullptr)
+                : owner(arg)
+            {}
+
+            ~generic_param_guard()
+            {
+                if (owner)
+                {
+                    owner->generic_param_stack.pop_back();
+                }
+            }
+
+            generic_param_guard(generic_param_guard&& other)
+                : owner(other.owner)
+            {
+                other.owner = nullptr;
+            }
+
+            generic_param_guard& operator=(generic_param_guard&& other)
+            {
+                owner = std::exchange(other.owner, nullptr);
+                return *this;
+            }
+
+            generic_param_guard& operator=(generic_param_guard const&) = delete;
+            haxe_writer* owner;
+        };
+
+        template<typename T>
+        struct member_value_guard
+        {
+            haxe_writer* const owner;
+            T haxe_writer::* const member;
+            T const previous;
+            explicit member_value_guard(haxe_writer* arg, T haxe_writer::* ptr, T value) :
+                owner(arg), member(ptr), previous(std::exchange(owner->*member, value))
+            {
+            }
+
+            ~member_value_guard()
+            {
+                owner->*member = previous;
+            }
+
+            member_value_guard(member_value_guard const&) = delete;
+            member_value_guard& operator=(member_value_guard const&) = delete;
+
+        };
+
+        void add_depends(TypeDef const& type)
+        {
+            auto ns = type.TypeNamespace();
+
+            if (ns != type_namespace)
+            {
+                depends[ns].insert(type);
+            }
+        }
+
+        [[nodiscard]] auto push_generic_params(std::pair<GenericParam, GenericParam> const& params)
+        {
+            if (empty(params))
+            {
+                return generic_param_guard{ nullptr };
+            }
+
+            std::vector<std::string> names;
+
+            for (auto&& param : params)
+            {
+                names.push_back(std::string{ param.Name() });
+            }
+
+            generic_param_stack.push_back(std::move(names));
+            return generic_param_guard{ this };
+        }
+
+        [[nodiscard]] auto push_generic_params(GenericTypeInstSig const& signature)
+        {
+            std::vector<std::string> names;
+
+            for (auto&& arg : signature.GenericArgs())
+            {
+                names.push_back(write_temp("%", arg));
+            }
+
+            generic_param_stack.push_back(std::move(names));
+            return generic_param_guard{ this };
+        }
+
+        [[nodiscard]] auto push_abi_types(bool value)
+        {
+            return member_value_guard(this, &haxe_writer::abi_types, value);
+        }
+
+        [[nodiscard]] auto push_async_types(bool value)
+        {
+            return member_value_guard(this, &haxe_writer::async_types, value);
+        }
+
+        [[nodiscard]] auto push_delegate_types(bool value)
+        {
+            return member_value_guard(this, &haxe_writer::delegate_types, value);
+        }
+
+        void write_value(int32_t value)
+        {
+            write_printf("%d", value);
+        }
+
+        void write_value(uint32_t value)
+        {
+            write_printf("%#0x", value);
+        }
+
+        void write_code(std::string_view const& value)
+        {
+            for (auto&& c : value)
+            {
+                if (c == '`')
+                {
+                    return;
+                }
+                else
+                {
+                    write(c);
+                }
+            }
+        }
+
+        void write(Constant const& value)
+        {
+            switch (value.Type())
+            {
+            case ConstantType::Int32:
+                write_value(value.ValueInt32());
+                break;
+            case ConstantType::UInt32:
+                write_value(value.ValueUInt32());
+                break;
+            default:
+                throw std::invalid_argument("Unexpected constant type");
+            }
+        }
+
+        void write(TypeDef const& type)
+        {
+            add_depends(type);
+            auto ns = type.TypeNamespace();
+
+            std::string pkg{ ns };
+            std::transform(pkg.begin(), pkg.end(), pkg.begin(), [](unsigned char c) { return std::tolower(c); });
+
+            auto name = type.TypeName();
+            auto generics = type.GenericParam();
+
+            if (!empty(generics))
+            {
+                write("winrt.@.%<%>", pkg, remove_tick(name), bind_list(", ", generics));
+                return;
+            }
+
+         /*   if (name == "EventRegistrationToken" && ns == "Windows.Foundation")
+            {
+                write("winrt::event_token");
+            }*/
+       /*     else if (name == "HResult" && ns == "Windows.Foundation")
+            {
+                write("winrt.HResult");
+            }
+            else*/ if (abi_types)
+            {
+                auto category = get_category(type);
+
+                if (ns == "Windows.Foundation.Numerics" && transform_special_numeric_type(name))
+                {
+                    write("winrt.@.%", pkg, name);
+                }
+                else if (category == category::struct_type)
+                {
+                    /*if ((name == "DateTime" || name == "TimeSpan") && ns == "Windows.Foundation")
+                    {
+                        write("int64_t");
+                    }
+                    else if ((name == "Point" || name == "Size" || name == "Rect") && ns == "Windows.Foundation")
+                    {
+                        write("winrt.@.%", pkg, name);
+                    }
+                    else*/ if (delegate_types)
+                    {
+                        write("struct impl::struct_%_%", get_impl_name(ns), name);
+                    }
+                    else
+                    {
+                        write("struct struct_%_%", get_impl_name(ns), name);
+                    }
+                }
+                else if (category == category::enum_type)
+                {
+                    write(type.FieldList().first.Signature().Type());
+                }
+                else
+                {
+                    write("cxx.VoidPtr");
+                }
+            }
+            else
+            {
+                write("winrt.@.%", pkg, name);
+            }
+        }
+
+        void write(TypeRef const& type)
+        {
+            if (type_name(type) == "System.Guid")
+            {
+                write("winrt.Guid");
+            }
+            else
+            {
+                write(find_required(type));
+            }
+        }
+
+        void write(GenericParam const& param)
+        {
+            write(param.Name());
+        }
+
+        void write(coded_index<TypeDefOrRef> const& type)
+        {
+            switch (type.type())
+            {
+            case TypeDefOrRef::TypeDef:
+                write(type.TypeDef());
+                break;
+            case TypeDefOrRef::TypeRef:
+                write(type.TypeRef());
+                break;
+            case TypeDefOrRef::TypeSpec:
+                write(type.TypeSpec().Signature().GenericTypeInst());
+                break;
+            }
+        }
+
+        void write(GenericTypeInstSig const& type)
+        {
+            if (abi_types)
+            {
+                write("cxx.VoidPtr");
+            }
+            else
+            {
+                auto generic_type = type.GenericType();
+                auto [ns, name] = get_type_namespace_and_name(generic_type);
+                name.remove_suffix(name.size() - name.rfind('`'));
+                add_depends(find_required(generic_type));
+
+                std::string lower_ns{ ns };
+                std::transform(lower_ns.begin(), lower_ns.end(), lower_ns.begin(), [](unsigned char c) { return std::tolower(c); });
+
+                if (consume_types)
+                {
+                    static constexpr std::string_view iterable("winrt.Windows.Foundation.Collections.IIterable<"sv);
+                    static constexpr std::string_view vector_view("winrt.Windows.Foundation.Collections.IVectorView<"sv);
+                    static constexpr std::string_view map_view("winrt.Windows.Foundation.Collections.IMapView<"sv);
+                    static constexpr std::string_view vector("winrt.Windows.Foundation.Collections.IVector<"sv);
+                    static constexpr std::string_view map("winrt.Windows.Foundation.Collections.IMap<"sv);
+
+                    consume_types = false;
+                    auto full_name = write_temp("winrt.@.%<%> /* temp_GenericTypeInstSig */", lower_ns, name, bind_list(", ", type.GenericArgs()));
+                    consume_types = true;
+
+                    if (starts_with(full_name, iterable))
+                    {
+                        if (async_types)
+                        {
+                            write("param::async_iterable%", full_name.substr(iterable.size() - 1));
+                        }
+                        else
+                        {
+                            write("param::iterable%", full_name.substr(iterable.size() - 1));
+                        }
+                    }
+                    else if (starts_with(full_name, vector_view))
+                    {
+                        if (async_types)
+                        {
+                            write("param::async_vector_view%", full_name.substr(vector_view.size() - 1));
+                        }
+                        else
+                        {
+                            write("param::vector_view%", full_name.substr(vector_view.size() - 1));
+                        }
+                    }
+
+                    else if (starts_with(full_name, map_view))
+                    {
+                        if (async_types)
+                        {
+                            write("param::async_map_view%", full_name.substr(map_view.size() - 1));
+                        }
+                        else
+                        {
+                            write("param::map_view%", full_name.substr(map_view.size() - 1));
+                        }
+                    }
+                    else if (starts_with(full_name, vector))
+                    {
+                        write("param::vector%", full_name.substr(vector.size() - 1));
+                    }
+                    else if (starts_with(full_name, map))
+                    {
+                        write("param::map%", full_name.substr(map.size() - 1));
+                    }
+                    else
+                    {
+                        write(full_name);
+                    }
+                }
+                else
+                {
+                    write("winrt.@.%<%> /* GenericTypeInstSig */", lower_ns, name, bind_list(", ", type.GenericArgs()));
+                }
+            }
+        }
+
+        void write(TypeSig::value_type const& type)
+        {
+            call(type,
+                [&](ElementType type)
+                {
+                    if (type == ElementType::Boolean) { write("Bool"); }
+                    else if (type == ElementType::Char) { write("cxx.Char"); } // TODO: this is not the right char
+                    else if (type == ElementType::I1) { write("cxx.num.Int8"); }
+                    else if (type == ElementType::U1) { write("cxx.num.UInt8"); }
+                    else if (type == ElementType::I2) { write("cxx.num.Int16"); }
+                    else if (type == ElementType::U2) { write("cxx.num.UInt16"); }
+                    else if (type == ElementType::I4) { write("cxx.num.Int32"); }
+                    else if (type == ElementType::U4) { write("cxx.num.UInt32"); }
+                    else if (type == ElementType::I8) { write("cxx.num.Int64"); }
+                    else if (type == ElementType::U8) { write("cxx.num.UInt64"); }
+                    else if (type == ElementType::R4) { write("cxx.num.Float32"); }
+                    else if (type == ElementType::R8) { write("cxx.num.Float64"); }
+                    else if (type == ElementType::String)
+                    {
+                        if (abi_types)
+                        {
+                            write("void*");
+                        }
+                        else if (consume_types)
+                        {
+                            write("winrt.HString");
+                        }
+                        else
+                        {
+                            write("winrt.HString");
+                        }
+                    }
+                    else if (type == ElementType::Object)
+                    {
+                        if (abi_types)
+                        {
+                            write("void*");
+                        }
+                        else
+                        {
+                            write("winrt.windows.foundation.IInspectable");
+                        }
+                    }
+                    else
+                    {
+                        assert(false);
+                    }
+                },
+                [&](GenericTypeIndex var)
+                {
+                    write(generic_param_stack.back()[var.index]);
+                },
+                    [&](auto&& type)
+                {
+                    write(type);
+                });
+        }
+
+        void write(TypeSig const& signature)
+        {
+            if (!abi_types && signature.is_szarray())
+            {
+                write("winrt.ComArray<%>", signature.Type());
+            }
+            else
+            {
+                write(signature.Type());
+            }
+        }
+
+        void write(RetTypeSig const& value)
+        {
+            if (value)
+            {
+                write(value.Type());
+            }
+            else
+            {
+                write("Void");
+            }
+        }
+
+        void write(Field const& value)
+        {
+            write(value.Signature().Type());
+        }
+
+        void write_root_include(std::string_view const& include)
+        {
+            auto format = R"(#include %winrt/%.h%
+)";
+
+            write(format,
+                settings.brackets ? '<' : '\"',
+                include,
+                settings.brackets ? '>' : '\"');
+        }
+
+        void write_depends(std::string_view const& ns, char impl = 0)
+        {
+            if (impl)
+            {
+                write_root_include(write_temp("impl/%.%", ns, impl));
+            }
+            else
+            {
+                write_root_include(ns);
+            }
+        }
+
+        void save_file()
+        {
+            auto file_path{ package };
+            std::replace(file_path.begin(), file_path.end(), '.', '/');
+
+            auto filename{ settings.output_folder + "haxe/winrt/" };
+            filename += file_path;
+            filename += "/";
+            filename += decl_name;
+            filename += ".hx";
+            flush_to_file(filename);
+        }
+    };
 }

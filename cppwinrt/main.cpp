@@ -363,6 +363,7 @@ R"(  local               Local ^%WinDir^%\System32\WinMetadata folder
                     write_namespace_1_h(ns, members);
                     write_namespace_2_h(ns, members);
                     write_namespace_h(c, ns, members);
+                    write_haxe_externs(ns, members);
                 });
             }
 

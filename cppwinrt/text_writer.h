@@ -7,6 +7,7 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include <filesystem>
 
 namespace cppwinrt
 {
@@ -173,6 +174,12 @@ namespace cppwinrt
             m_second.clear();
         }
 
+        void create_dir(const std::string& path)
+        {
+            auto dir_path = std::filesystem::path(path).parent_path();
+            std::filesystem::create_directories(dir_path);
+        }
+
         void flush_to_file(std::string const& filename)
         {
             if (!file_equal(filename))
@@ -181,6 +188,7 @@ namespace cppwinrt
                 file.exceptions(std::ofstream::failbit | std::ofstream::badbit);
                 try
                 {
+                  create_dir(filename);
                   file.open(filename, std::ios::out | std::ios::binary);
                   file.write(m_first.data(), m_first.size());
                   file.write(m_second.data(), m_second.size());

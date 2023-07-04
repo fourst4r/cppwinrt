@@ -1,4 +1,5 @@
 #pragma once
+#include <unordered_map>
 
 namespace cppwinrt
 {
@@ -175,6 +176,117 @@ namespace cppwinrt
         w.write_depends(w.type_namespace, '1');
         w.save_header('2');
     }
+
+    static void write_haxe_externs(std::string_view const& ns, cache::namespace_members const& members)
+    {
+        
+
+        std::string lower_ns{ ns };
+        std::transform(lower_ns.begin(), lower_ns.end(), lower_ns.begin(), [](unsigned char c) { return std::tolower(c); });
+
+        for (auto cls : members.classes) 
+        {
+            haxe_writer w;
+            w.type_namespace = ns;
+            w.package = lower_ns;
+            w.decl_name = remove_tick(cls.TypeName());
+            w.type = cls;
+
+            write_haxe_package(w, w.package);
+            write_haxe_class(w, cls);
+
+            w.save_file();
+        }
+
+        // We group IFace<T> and IFace<T, U> into the same file.
+        std::unordered_map<std::string, std::vector<TypeDef>> ifaces;
+        for (const auto& iface : members.interfaces)
+        {
+            auto name = iface.TypeName();
+            auto backtick = name.find('`');
+            if (backtick != std::string::npos)
+            {
+                std::string prefix{ name.substr(0, backtick) };
+                ifaces[prefix].push_back(iface);
+            }
+        }
+
+        for (const auto& [name, types] : ifaces)
+        {
+            haxe_writer w;
+            w.type_namespace = ns;
+            w.package = lower_ns;
+            w.decl_name = name;
+            write_haxe_package(w, w.package);
+
+            for (auto iface : types)
+            {
+                w.type = iface;
+                write_haxe_interface(w, iface);
+            }
+
+            w.save_file();
+        }
+
+        /*for (auto iface : members.interfaces)
+        {
+            haxe_writer w;
+            w.type_namespace = ns;
+            w.package = lower_ns;
+            w.decl_name = iface.TypeName();
+            w.type = iface;
+
+            write_haxe_package(w, w.package);
+            write_haxe_interface(w, iface);
+
+            w.save_file();
+        }*/
+
+        for (auto enm : members.enums)
+        {
+            haxe_writer w;
+            w.type_namespace = ns;
+            w.package = lower_ns;
+            w.decl_name = enm.TypeName();
+            w.type = enm;
+
+            write_haxe_package(w, w.package);
+            write_haxe_enum(w, enm);
+
+            w.save_file();
+        }
+
+        for (auto struc : members.structs)
+        {
+            haxe_writer w;
+            w.type_namespace = ns;
+            w.package = lower_ns;
+            w.decl_name = struc.TypeName();
+            w.type = struc;
+
+            write_haxe_package(w, w.package);
+            write_haxe_struct(w, struc);
+
+            w.save_file();
+        }
+
+        for (auto deleg8 : members.delegates)
+        {
+            haxe_writer w;
+            w.type_namespace = ns;
+            w.package = lower_ns;
+            w.decl_name = remove_tick(deleg8.TypeName());
+            ::printf("delegate %s\n", deleg8.TypeName().data());
+            w.type = deleg8;
+
+            write_haxe_package(w, w.package);
+            write_haxe_delegate(w, deleg8);
+
+            w.save_file();
+        }
+    }
+
+
 
     static void write_namespace_h(cache const& c, std::string_view const& ns, cache::namespace_members const& members)
     {

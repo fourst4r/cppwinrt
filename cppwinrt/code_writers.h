@@ -186,11 +186,12 @@ namespace cppwinrt
 
     [[nodiscard]] static finish_with wrap_type_namespace(writer& w, std::string_view const& ns)
     {
-        auto format = R"(WINRT_EXPORT namespace winrt::@
+        auto format = R"(/* package @; */
+WINRT_EXPORT namespace winrt::@
 {
 )";
 
-        w.write(format, ns);
+        w.write(format, ns, ns);
 
         return { w, write_close_namespace };
     }
@@ -306,7 +307,7 @@ namespace cppwinrt
 
         if (get_category(type) == category::enum_type)
         {
-            auto format = R"(    enum class % : %;
+            auto format = R"(    /* write_forward */ enum class % : %;
 )";
 
             w.write(format, type_name.name, type.FieldList().first.Signature().Type());
@@ -339,14 +340,14 @@ namespace cppwinrt
 
         if (empty(generics))
         {
-            auto format = R"(    struct %;
+            auto format = R"(    /* write_forward */ struct %;
 )";
 
             w.write(format, type_name.name);
             return;
         }
 
-        auto format = R"(    template <%> struct WINRT_IMPL_EMPTY_BASES %;
+        auto format = R"(    /* write_forward */ template <%> struct WINRT_IMPL_EMPTY_BASES %;
 )";
 
         w.write(format,
@@ -990,7 +991,7 @@ namespace cppwinrt
         auto method_name = get_name(method);
         auto type = method.Parent();
 
-        w.write("        %auto %(%) const%;\n",
+        w.write("        %auto %(%) const%; // consume_declaration \n",
             is_get_overload(method) ? "[[nodiscard]] " : "",
             method_name,
             bind<write_consume_params>(signature),
@@ -1129,7 +1130,7 @@ namespace cppwinrt
             if (is_remove_overload(method))
             {
                 // we intentionally ignore errors when unregistering event handlers to be consistent with event_revoker
-                format = R"(    template <typename D%> auto consume_%<D%>::%(%) const noexcept
+                format = R"(    template <typename D%> auto consume_%<D%>::%(%) const noexcept /* consume def */
     {%
         WINRT_IMPL_SHIM(%)->%(%);%
     }
@@ -1137,7 +1138,7 @@ namespace cppwinrt
             }
             else
             {
-                format = R"(    template <typename D%> auto consume_%<D%>::%(%) const noexcept
+                format = R"(    template <typename D%> auto consume_%<D%>::%(%) const noexcept /* consume def */
     {%
         WINRT_VERIFY_(0, WINRT_IMPL_SHIM(%)->%(%));%
     }
@@ -1146,7 +1147,7 @@ namespace cppwinrt
         }
         else
         {
-            format = R"(    template <typename D%> auto consume_%<D%>::%(%) const
+            format = R"(    template <typename D%> auto consume_%<D%>::%(%) const /* consume def */
     {%
         check_hresult(WINRT_IMPL_SHIM(%)->%(%));%
     }
@@ -1529,8 +1530,18 @@ namespace cppwinrt
 
         if (empty(generics))
         {
+//            auto format2 = R"(/*
+//    extern class % {
+//%    }
+//*/
+//)";
+//            w.write(format2,
+//                type_name,
+//                bind_each<write_haxe_consume_declaration>(type.MethodList())
+//            );
+
             auto format = R"(    template <typename D>
-    struct consume_%
+    struct consume_% /* write consume */
     {
 %%%    };
     template <> struct consume<%>
@@ -1551,7 +1562,7 @@ namespace cppwinrt
         else
         {
             auto format = R"(    template <typename D, %>
-    struct consume_%
+    struct consume_% /* write_consume */ 
     {
 %%%    };
     template <%> struct consume<%>
@@ -1913,7 +1924,7 @@ namespace cppwinrt
     static void write_produce(writer& w, TypeDef const& type, cache const& c)
     {
         auto format = R"(    template <typename D%>
-    struct produce<D, %> : produce_base<D, %>
+    struct produce<D, %> : produce_base<D, %> /* write produce */
     {
 %%    };
 )";
@@ -2169,7 +2180,7 @@ struct WINRT_IMPL_EMPTY_BASES produce_dispatch_to_overridable<T, D, %>
     static void write_interface_override(writer& w, TypeDef const& type)
     {
         auto format = R"(    template <typename D>
-    class %T
+    class %T /* interface override */
     {
         D& shim() noexcept { return *static_cast<D*>(this); }
         D const& shim() const noexcept { return *static_cast<const D*>(this); }
@@ -2241,7 +2252,7 @@ struct WINRT_IMPL_EMPTY_BASES produce_dispatch_to_overridable<T, D, %>
         }
 
         auto format = R"(    template <typename D, typename... Interfaces>
-    struct %T :
+    struct %T : /* write class override */
         implements<D%, composing, Interfaces...>,
         impl::require<D%>,
         impl::base<D, %%>%
@@ -2376,7 +2387,17 @@ struct WINRT_IMPL_EMPTY_BASES produce_dispatch_to_overridable<T, D, %>
 
         if (empty(generics))
         {
-            auto format = R"(    struct WINRT_IMPL_EMPTY_BASES % :
+//            auto format2 = R"(/*
+//    extern interface % extends windows.foundation.IInspectable {
+//        
+//    }
+//*/)";
+//            w.write(format2, 
+//                type_name,
+//                bind_each<write_haxe_consume_declaration>(type.MethodList())
+//            );
+
+            auto format = R"(    struct WINRT_IMPL_EMPTY_BASES % : /* write interface */
         winrt::Windows::Foundation::IInspectable,
         impl::consume_t<%>%
     {
@@ -2399,7 +2420,7 @@ struct WINRT_IMPL_EMPTY_BASES produce_dispatch_to_overridable<T, D, %>
             type_name = remove_tick(type_name);
 
             auto format = R"(    template <%>
-    struct WINRT_IMPL_EMPTY_BASES % :
+    struct WINRT_IMPL_EMPTY_BASES % : /* write interface 2 */
         winrt::Windows::Foundation::IInspectable,
         impl::consume_t<%>%
     {%
@@ -2437,7 +2458,7 @@ struct WINRT_IMPL_EMPTY_BASES produce_dispatch_to_overridable<T, D, %>
             w.write(format, bind<write_generic_typenames>(generics));
         }
 
-        auto format = R"(    struct % : winrt::Windows::Foundation::IUnknown
+        auto format = R"(    struct % : winrt::Windows::Foundation::IUnknown /* write delegate */
     {%
         %(std::nullptr_t = nullptr) noexcept {}
         %(void* ptr, take_ownership_from_abi_t) noexcept : winrt::Windows::Foundation::IUnknown(ptr, take_ownership_from_abi) {}
@@ -2645,7 +2666,7 @@ struct WINRT_IMPL_EMPTY_BASES produce_dispatch_to_overridable<T, D, %>
 
     static bool write_structs(writer& w, std::vector<TypeDef> const& types)
     {
-        auto format = R"(    struct %
+        auto format = R"(    struct % /* WRITE STRUCTS */
     {
 %    };
     inline bool operator==(% const& left, % const& right)%
@@ -2861,7 +2882,7 @@ struct WINRT_IMPL_EMPTY_BASES produce_dispatch_to_overridable<T, D, %>
 
         for (auto&& base : get_bases(type))
         {
-            auto format = R"(    inline %::operator impl::producer_ref<%> const() const noexcept
+            auto format = R"(    inline %::operator impl::producer_ref<%> const() const noexcept /* fast class base defs  */
     {
         return { (*(impl::abi_t<%>**)this)->base_%() };
     }
@@ -2877,6 +2898,150 @@ struct WINRT_IMPL_EMPTY_BASES produce_dispatch_to_overridable<T, D, %>
                 }
 
                 w.write_each<write_consume_fast_base_definition>(info.type.MethodList(), type, base);
+            }
+        }
+    }
+
+    static void write_haxe_consume_params(haxe_writer& w, method_signature const& signature)
+    {
+        haxe_separator s{ w };
+
+        for (auto&& [param, param_signature] : signature.params())
+        {
+            s();
+
+            w.write("%: ", param.Name());
+
+            if (param_signature->Type().is_szarray())
+            {
+                std::string_view format;
+
+                if (param.Flags().In())
+                {
+                    //format = "array_view<% const>";
+                    format = "winrt.ArrayView<%>";
+                }
+                else if (param_signature->ByRef())
+                {
+                    format = "cxx.Ref<winrt.ComArray<%>>";
+                }
+                else
+                {
+                    format = "winrt.ArrayView<%>";
+                }
+
+                w.write(format, param_signature->Type().Type());
+            }
+            else
+            {
+                if (param.Flags().In())
+                {
+                    assert(!param.Flags().Out());
+                    w.consume_types = true;
+
+                    auto param_type = std::get_if<ElementType>(&param_signature->Type().Type());
+
+                    if (param_type && *param_type != ElementType::String && *param_type != ElementType::Object)
+                    {
+                        w.write("%", param_signature->Type());
+                    }
+                    else if (std::holds_alternative<GenericTypeIndex>(param_signature->Type().Type()))
+                    {
+                        w.write("cxx.ConstRef<%>", param_signature->Type());
+                    }
+                    else
+                    {
+                        w.write("cxx.ConstRef<%>", param_signature->Type());
+                    }
+
+                    w.consume_types = false;
+                }
+                else
+                {
+                    assert(!param.Flags().In());
+                    assert(param.Flags().Out());
+
+                    w.write("cxx.Ref<%>", param_signature->Type());
+                }
+            }
+
+        }
+    }
+
+    static void write_haxe_consume_declaration(haxe_writer& w, MethodDef const& method)
+    {
+        method_signature signature{ method };
+        auto async_types_guard = w.push_async_types(signature.is_async());
+        auto method_name = get_name(method);
+        auto type = method.Parent();
+
+        if (method_name == ".ctor")
+            return;
+
+        w.write("    overload function %(%): %;\n",
+            method_name,
+            bind<write_haxe_consume_params>(signature),
+            signature.return_signature()
+        );
+
+        /*     w.write("        %auto %(%) const%; // consume_declaration \n",
+                 is_get_overload(method) ? "[[nodiscard]] " : "",
+                 method_name,
+                 bind<write_consume_params>(signature),
+                 is_noexcept(method) ? " noexcept" : "");*/
+
+        if (is_add_overload(method))
+        {
+            //            auto format = R"(        using %_revoker = impl::event_revoker<%, &impl::abi_t<%>::remove_%>;
+            //        [[nodiscard]] auto %(auto_revoke_t, %) const;
+            //)";
+            //
+            //            w.write(format,
+            //                method_name,
+            //                type,
+            //                type,
+            //                method_name,
+            //                method_name,
+            //                bind<write_consume_params>(signature));
+        }
+    }
+
+    static void write_haxe_constructor_declarations(haxe_writer& w, TypeDef const& type, std::map<std::string, factory_info> const& factories)
+    {
+        auto type_name = type.TypeName();
+
+        for (auto&& [factory_name, factory] : factories)
+        {
+            if (factory.activatable)
+            {
+                if (!factory.type)
+                {
+                    w.write("    function new();\n");
+                }
+                else
+                {
+                    for (auto&& method : factory.type.MethodList())
+                    {
+                        method_signature signature{ method };
+
+                        w.write("    %function new(%);\n",
+                            signature.params().size() == 1 ? "/* explicit */ " : "//",
+                            bind<write_haxe_consume_params>(signature));
+                    }
+                }
+            }
+            else if (factory.composable && factory.visible)
+            {
+                for (auto&& method : factory.type.MethodList())
+                {
+                    method_signature signature{ method };
+                    auto& params = signature.params();
+                    params.resize(params.size() - 2);
+
+                    w.write("    %function new(%);\n",
+                        signature.params().size() == 1 ? "/* explicit */ " : "//",
+                        bind<write_haxe_consume_params>(signature));
+                }
             }
         }
     }
@@ -2928,13 +3093,15 @@ struct WINRT_IMPL_EMPTY_BASES produce_dispatch_to_overridable<T, D, %>
         auto type_name = type.TypeName();
         method_signature signature{ method };
 
-        auto format = R"(    inline %::%(%) :
+        auto format = R"(    /* function new(%) */
+    inline %::%(%) : 
         %(%)
     {
     }
 )";
 
         w.write(format,
+            bind<write_consume_params>(signature),
             type_name,
             type_name,
             bind<write_consume_params>(signature),
@@ -2952,7 +3119,7 @@ struct WINRT_IMPL_EMPTY_BASES produce_dispatch_to_overridable<T, D, %>
         auto base_param = params.back().first.Name();
         params.pop_back();
 
-        auto format = R"(    inline %::%(%)
+        auto format = R"(    inline %::%(%) /* Composable consturctor */
     {
         winrt::Windows::Foundation::IInspectable %, %;
         *this = % { return f.%(%%%, %); });
@@ -2991,7 +3158,7 @@ struct WINRT_IMPL_EMPTY_BASES produce_dispatch_to_overridable<T, D, %>
 
             if (is_opt_type)
             {
-                w.write("        %static % %(%);\n",
+                w.write("        %static % %(%); /* write_static_declaration */\n",
                     is_get_overload(method) ? "[[nodiscard]] " : "",
                     signature.return_signature(),
                     method_name,
@@ -2999,7 +3166,7 @@ struct WINRT_IMPL_EMPTY_BASES produce_dispatch_to_overridable<T, D, %>
             }
             else
             {
-                w.write("        %static auto %(%);\n",
+                w.write("        %static auto %(%); /* write_static_declaration not opt */\n",
                     is_get_overload(method) ? "[[nodiscard]] " : "",
                     method_name,
                     bind<write_consume_params>(signature));
@@ -3044,15 +3211,21 @@ struct WINRT_IMPL_EMPTY_BASES produce_dispatch_to_overridable<T, D, %>
         method_signature signature{ method };
         auto method_name = get_name(method);
         auto async_types_guard = w.push_async_types(signature.is_async());
-
+        
         {
-            auto format = R"(    inline auto %::%(%)
+            auto format = R"(    /* static function %(%): % */
+    inline auto %::%(%) /* write_static_definitions */
     {
         %%;
     }
 )";
 
             w.write(format,
+
+                method_name,
+                bind<write_consume_params>(signature),
+                method.Signature().ReturnType(),
+
                 type_name,
                 method_name,
                 bind<write_consume_params>(signature),
@@ -3101,7 +3274,8 @@ struct WINRT_IMPL_EMPTY_BASES produce_dispatch_to_overridable<T, D, %>
 
                     if (has_fastabi(type))
                     {
-                        format = R"(    inline %::%() :
+                        format = R"(    /* function new() */
+    inline %::%() : /* write_class_definitions fast_abi */
         %(impl::call_factory_cast<%(*)(winrt::Windows::Foundation::IActivationFactory const&), %>([](winrt::Windows::Foundation::IActivationFactory const& f) { return impl::fast_activate<%>(f); }))
     {
     }
@@ -3109,7 +3283,8 @@ struct WINRT_IMPL_EMPTY_BASES produce_dispatch_to_overridable<T, D, %>
                     }
                     else
                     {
-                        format = R"(    inline %::%() :
+                        format = R"(    /* function new() */
+    inline %::%() : /* write_class_definitions */
         %(impl::call_factory_cast<%(*)(winrt::Windows::Foundation::IActivationFactory const&), %>([](winrt::Windows::Foundation::IActivationFactory const& f) { return f.template ActivateInstance<%>(); }))
     {
     }
@@ -3145,7 +3320,7 @@ struct WINRT_IMPL_EMPTY_BASES produce_dispatch_to_overridable<T, D, %>
         auto type_name = type.TypeName();
         auto factories = get_factories(w, type);
 
-        auto format = R"(    struct WINRT_IMPL_EMPTY_BASES % : %%%
+        auto format = R"(    struct WINRT_IMPL_EMPTY_BASES % : %%% /* class SlowClass { */
     {
         %(std::nullptr_t) noexcept {}
         %(void* ptr, take_ownership_from_abi_t) noexcept : %(ptr, take_ownership_from_abi) {}
@@ -3170,7 +3345,7 @@ struct WINRT_IMPL_EMPTY_BASES produce_dispatch_to_overridable<T, D, %>
         auto type_name = type.TypeName();
         auto factories = get_factories(w, type);
 
-        auto format = R"(    struct WINRT_IMPL_EMPTY_BASES % : %%
+        auto format = R"(    struct WINRT_IMPL_EMPTY_BASES % : %% /* class FastClass { */
     {
         %(std::nullptr_t) noexcept {}
         %(void* ptr, take_ownership_from_abi_t) noexcept : %(ptr, take_ownership_from_abi) {}
@@ -3194,7 +3369,7 @@ struct WINRT_IMPL_EMPTY_BASES produce_dispatch_to_overridable<T, D, %>
         auto type_name = type.TypeName();
         auto factories = get_factories(w, type);
 
-        auto format = R"(    struct %
+        auto format = R"(    struct % /* write_static_class */
     {
         %() = delete;
 %    };
@@ -3204,6 +3379,348 @@ struct WINRT_IMPL_EMPTY_BASES produce_dispatch_to_overridable<T, D, %>
             type_name,
             type_name,
             bind_each<write_static_declaration>(factories, type));
+    }
+
+
+
+    static void write_haxe_enum_field(haxe_writer& w, Field const& field)
+    {
+        auto format = R"(    final % = %;
+)";
+
+        if (auto constant = field.Constant())
+        {
+            w.write(format, field.Name(), *constant);
+        }
+    }
+
+    static void write_haxe_class_meta(haxe_writer& w)
+    {
+        w.write("\n@:valueType");
+        //w.write("winrt::%::%\")", ns, remove_tick(type.TypeName()));
+    }
+
+    static void write_haxe_native_fqn(haxe_writer& w, TypeDef const& type)
+    {
+        std::string ns{ type.TypeNamespace() };
+
+        size_t pos = 0;
+        while ((pos = ns.find(".", pos)) != std::string::npos)
+        {
+            ns.replace(pos, 1, "::");
+            pos += 2;
+        }
+
+        w.write("\n@:native(\"");
+        w.write("winrt::%::%\")", ns, remove_tick(type.TypeName()));
+    }
+
+    static void write_haxe_include(haxe_writer& w, TypeDef const& type)
+    {
+        w.write("\n@:include(\"");
+        w.write("winrt/%.h\", true)", type.TypeNamespace());
+    }
+
+    static void write_haxe_enum(haxe_writer& w, TypeDef const& type)
+    {
+        auto format = R"(%%
+enum abstract %(%)
+{
+%}
+)";
+
+        auto fields = type.FieldList();
+        w.write(format, 
+            bind<write_haxe_include>(type),
+            bind<write_haxe_native_fqn>(type),
+            type.TypeName(), 
+            fields.first.Signature().Type(), 
+            bind_each<write_haxe_enum_field>(fields));
+    }
+
+    static void write_haxe_normal_class(haxe_writer& w, TypeDef const& type, coded_index<TypeDefOrRef> const& base_type)
+    {
+        auto type_name = type.TypeName();
+        auto factories = get_factories(w, type);
+
+        auto format = R"(%%%
+extern class % extends % 
+{
+%%}
+)";
+        w.write(format,
+            write_haxe_class_meta,
+            bind<write_haxe_include>(type),
+            bind<write_haxe_native_fqn>(type),
+            type_name,
+            base_type,
+            bind<write_haxe_constructor_declarations>(type, factories),
+            bind_each<write_haxe_consume_declaration>(type.MethodList())
+        );
+        /*w.write(format,
+            type_name,
+            base_type,
+            bind<write_class_base>(type),
+            bind<write_class_requires>(type),
+            bind<write_haxe_constructor_declarations>(type, factories),
+            bind<write_class_usings>(type),
+            bind_each<write_static_declaration>(factories, type));*/
+    }
+
+    static void write_haxe_struct(haxe_writer& w, TypeDef const& type)
+    {
+        auto type_name = type.TypeName();
+        auto factories = get_factories(w, type);
+
+        w.write("\n@:structInit");
+        auto format = R"(%%
+extern class %
+{
+%%}
+)";
+        w.write(format,
+            bind<write_haxe_include>(type),
+            bind<write_haxe_native_fqn>(type),
+            type_name,
+            bind<write_haxe_constructor_declarations>(type, factories),
+            bind_each<write_haxe_consume_declaration>(type.MethodList())
+        );
+        /*w.write(format,
+            type_name,
+            base_type,
+            bind<write_class_base>(type),
+            bind<write_class_requires>(type),
+            bind<write_haxe_constructor_declarations>(type, factories),
+            bind<write_class_usings>(type),
+            bind_each<write_static_declaration>(factories, type));*/
+    }
+
+    static void write_haxe_package(haxe_writer& w, std::string_view const& package)
+    {
+        w.write("package winrt.%;\n", package);
+    }
+
+    static void write_haxe_static_declaration(haxe_writer& w, std::pair<std::string const, factory_info> const& factory, TypeDef const& type)
+    {
+        if (!factory.second.statics)
+        {
+            return;
+        }
+
+        auto is_opt_type = settings.component_opt && settings.component_filter.includes(type);
+
+        for (auto&& method : factory.second.type.MethodList())
+        {
+            method_signature signature{ method };
+            auto method_name = get_name(method);
+            auto async_types_guard = w.push_async_types(signature.is_async());
+
+            auto is_property = is_get_overload(method) || is_set_overload(method);
+
+            // TODO: properties
+            /*if (is_get_overload(method))
+            {
+                w.write("    static var %(%, %):%\n",
+                    get_name(method),
+
+                );
+            }*/
+
+            w.write("    static overload function %(%): %;\n",
+                method_name,
+                bind<write_haxe_consume_params>(signature),
+                signature.return_signature());
+
+
+
+//            if (is_add_overload(method))
+//            {
+//                {
+//                    auto format = R"(        using %_revoker = impl::factory_event_revoker<%, &impl::abi_t<%>::remove_%>;
+//)";
+//                    w.write(format,
+//                        method_name,
+//                        factory.second.type,
+//                        factory.second.type,
+//                        method_name);
+//                }
+//
+//                if (is_opt_type)
+//                {
+//                    auto format = R"(        [[nodiscard]] static %_revoker %(auto_revoke_t, %);
+//)";
+//                    w.write(format,
+//                        method_name,
+//                        method_name,
+//                        bind<write_haxe_consume_params>(signature));
+//                }
+//                else
+//                {
+//                    auto format = R"(        [[nodiscard]] static auto %(auto_revoke_t, %);
+//)";
+//                    w.write(format,
+//                        method_name,
+//                        bind<write_haxe_consume_params>(signature));
+//                }
+//            }
+        }
+    }
+
+    static void write_haxe_static_class(haxe_writer& w, TypeDef const& type)
+    {
+        auto type_name = type.TypeName();
+        auto factories = get_factories(w, type);
+
+        auto format = R"(%%
+extern class %
+{
+%}
+)";
+
+        w.write(format,
+            bind<write_haxe_include>(type),
+            bind<write_haxe_native_fqn>(type),
+            type_name,
+            bind_each<write_haxe_static_declaration>(factories, type));
+    }
+
+    static void write_haxe_class(haxe_writer& w, TypeDef const& type)
+    {
+        if (auto default_interface = get_default_interface(type))
+        {
+            write_haxe_normal_class(w, type, default_interface);
+        }
+        else
+        {
+            write_haxe_static_class(w, type);
+        }
+    }
+
+    static void write_haxe_generic_typenames(haxe_writer& w, std::pair<GenericParam, GenericParam> const& params)
+    {
+        haxe_separator s{ w };
+
+        for (auto&& param : params)
+        {
+            s();
+            w.write("%", param);
+        }
+    }
+
+    static void write_haxe_interface(haxe_writer& w, TypeDef const& type)
+    {
+        auto type_name = type.TypeName();
+        auto generics = type.GenericParam();
+        auto guard{ w.push_generic_params(generics) };
+
+        if (empty(generics))
+        {
+            auto format2 = R"(%%%
+extern class % extends winrt.windows.foundation.IInspectable
+{
+%}
+)";
+            w.write(format2,
+                write_haxe_class_meta,
+                bind<write_haxe_include>(type),
+                bind<write_haxe_native_fqn>(type),
+                type_name,
+                bind_each<write_haxe_consume_declaration>(type.MethodList())
+            );
+
+            auto format = R"(    struct WINRT_IMPL_EMPTY_BASES % : /* write interface */
+        winrt::Windows::Foundation::IInspectable,
+        impl::consume_t<%>%
+    {
+        %(std::nullptr_t = nullptr) noexcept {}
+        %(void* ptr, take_ownership_from_abi_t) noexcept : winrt::Windows::Foundation::IInspectable(ptr, take_ownership_from_abi) {}
+%%    };
+)";
+
+            //w.write(format,
+            //    type_name,
+            //    type_name,
+            //    bind<write_interface_requires>(type),
+            //    type_name,
+            //    type_name,
+            //    bind<write_interface_usings>(type),
+            //    bind<write_interface_extensions>(type));
+        }
+        else
+        {
+            type_name = remove_tick(type_name);
+
+            auto format = R"(%%%
+extern class %<%> extends winrt.windows.foundation.IInspectable
+{
+%}
+)";
+            w.write(format,
+                write_haxe_class_meta,
+                bind<write_haxe_include>(type),
+                bind<write_haxe_native_fqn>(type),
+                type_name,
+                bind<write_haxe_generic_typenames>(generics),
+                bind_each<write_haxe_consume_declaration>(type.MethodList())
+            );
+
+//            auto format = R"(    template <%>
+//    struct WINRT_IMPL_EMPTY_BASES % : /* write interface 2 */
+//        winrt::Windows::Foundation::IInspectable,
+//        impl::consume_t<%>%
+//    {%
+//        %(std::nullptr_t = nullptr) noexcept {}
+//        %(void* ptr, take_ownership_from_abi_t) noexcept : winrt::Windows::Foundation::IInspectable(ptr, take_ownership_from_abi) {}
+//%%    };
+//)";
+
+            //w.write(format,
+            //    bind<write_generic_typenames>(generics),
+            //    type_name,
+            //    type,
+            //    bind<write_interface_requires>(type),
+            //    bind<write_generic_asserts>(generics),
+            //    type_name,
+            //    type_name,
+            //    bind<write_interface_usings>(type),
+            //    bind<write_interface_extensions>(type));
+        }
+    }
+
+    static void write_haxe_delegate(haxe_writer& w, TypeDef const& type)
+    {
+        auto generics = type.GenericParam();
+        auto guard{ w.push_generic_params(generics) };
+        auto type_name = type.TypeName();
+
+        method_signature signature{ get_delegate_method(type) };
+        //auto return_type = signature.return_signature().Type();
+
+        w.write("\n@:extern ");
+
+        if (!empty(generics))
+        {
+            type_name = remove_tick(type_name);
+
+            auto format = R"(
+typedef %<%> = (%)->Void;
+)";
+            w.write(format, 
+                type_name,
+                bind<write_haxe_generic_typenames>(generics),
+                bind<write_haxe_consume_params>(signature)
+            );
+        }
+        else
+        {
+            auto format = R"(
+typedef % = (%)->Void;
+)";
+            w.write(format,
+                type_name,
+                bind<write_haxe_consume_params>(signature)
+            );
+        }
     }
 
     static void write_class(writer& w, TypeDef const& type)

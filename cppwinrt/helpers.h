@@ -142,6 +142,24 @@ namespace cppwinrt
         }
     };
 
+    struct haxe_separator
+    {
+        haxe_writer& w;
+        bool first = true;
+
+        void operator()()
+        {
+            if (first)
+            {
+                first = false;
+            }
+            else
+            {
+                w.write(", ");
+            }
+        }
+    };
+
     template <typename T>
     bool has_attribute(T const& row, std::string_view const& type_namespace, std::string_view const& type_name)
     {
@@ -235,6 +253,11 @@ namespace cppwinrt
     static bool is_get_overload(MethodDef const& method)
     {
         return method.SpecialName() && starts_with(method.Name(), "get_");
+    }
+
+    static bool is_set_overload(MethodDef const& method)
+    {
+        return method.SpecialName() && starts_with(method.Name(), "set_");
     }
 
     static bool is_noexcept(MethodDef const& method)
@@ -812,6 +835,77 @@ namespace cppwinrt
         bool composable{};
         bool visible{};
     };
+
+    static auto get_factories(haxe_writer& w, TypeDef const& type)
+    {
+        auto get_system_type = [&](auto&& signature) -> TypeDef
+        {
+            for (auto&& arg : signature.FixedArgs())
+            {
+                if (auto type_param = std::get_if<ElemSig::SystemType>(&std::get<ElemSig>(arg.value).value))
+                {
+                    return type.get_cache().find_required(type_param->name);
+                }
+            }
+
+            return {};
+        };
+
+        std::map<std::string, factory_info> result;
+
+        for (auto&& attribute : type.CustomAttribute())
+        {
+            auto attribute_name = attribute.TypeNamespaceAndName();
+
+            if (attribute_name.first != "Windows.Foundation.Metadata")
+            {
+                continue;
+            }
+
+            auto signature = attribute.Value();
+            factory_info info;
+
+            if (attribute_name.second == "ActivatableAttribute")
+            {
+                info.type = get_system_type(signature);
+                info.activatable = true;
+            }
+            else if (attribute_name.second == "StaticAttribute")
+            {
+                info.type = get_system_type(signature);
+                info.statics = true;
+            }
+            else if (attribute_name.second == "ComposableAttribute")
+            {
+                info.type = get_system_type(signature);
+                info.composable = true;
+
+                for (auto&& arg : signature.FixedArgs())
+                {
+                    if (auto visibility = std::get_if<ElemSig::EnumValue>(&std::get<ElemSig>(arg.value).value))
+                    {
+                        info.visible = std::get<int32_t>(visibility->value) == 2;
+                        break;
+                    }
+                }
+            }
+            else
+            {
+                continue;
+            }
+
+            std::string name;
+
+            if (info.type)
+            {
+                name = w.write_temp("%", info.type);
+            }
+
+            result[name] = std::move(info);
+        }
+
+        return result;
+    }
 
     static auto get_factories(writer& w, TypeDef const& type)
     {
