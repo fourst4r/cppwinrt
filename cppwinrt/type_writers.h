@@ -786,15 +786,15 @@ namespace cppwinrt
                 return;
             }
 
-         /*   if (name == "EventRegistrationToken" && ns == "Windows.Foundation")
+            if (name == "EventRegistrationToken" && ns == "Windows.Foundation")
             {
-                write("winrt::event_token");
-            }*/
-       /*     else if (name == "HResult" && ns == "Windows.Foundation")
+                write("winrt.EventToken");
+            }
+            else if (name == "HResult" && ns == "Windows.Foundation")
             {
                 write("winrt.HResult");
             }
-            else*/ if (abi_types)
+            else if (abi_types)
             {
                 auto category = get_category(type);
 
