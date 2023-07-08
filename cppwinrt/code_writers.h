@@ -3006,6 +3006,21 @@ struct WINRT_IMPL_EMPTY_BASES produce_dispatch_to_overridable<T, D, %>
         }
     }
 
+    static void write_haxe_native_fqn(haxe_writer& w, TypeDef const& type)
+    {
+        std::string ns{ type.TypeNamespace() };
+
+        size_t pos = 0;
+        while ((pos = ns.find(".", pos)) != std::string::npos)
+        {
+            ns.replace(pos, 1, "::");
+            pos += 2;
+        }
+
+        w.write("@:native(\"");
+        w.write("winrt::%::%\")\n", ns, remove_tick(type.TypeName()));
+    }
+
     static void write_haxe_constructor_declarations(haxe_writer& w, TypeDef const& type, std::map<std::string, factory_info> const& factories)
     {
         auto type_name = type.TypeName();
@@ -3016,6 +3031,7 @@ struct WINRT_IMPL_EMPTY_BASES produce_dispatch_to_overridable<T, D, %>
             {
                 if (!factory.type)
                 {
+                    // empty constructor
                     w.write("    function new();\n");
                 }
                 else
@@ -3023,10 +3039,15 @@ struct WINRT_IMPL_EMPTY_BASES produce_dispatch_to_overridable<T, D, %>
                     for (auto&& method : factory.type.MethodList())
                     {
                         method_signature signature{ method };
-
-                        w.write("    %function new(%);\n",
-                            signature.params().size() == 1 ? "/* explicit */ " : "//",
-                            bind<write_haxe_consume_params>(signature));
+                        
+                        /*w.write("    @:native(\"");
+                        w.write("%\")\n", type);*/
+                        
+                        w.write("    %    %static overload function make(%): %;\n",
+                            bind<write_haxe_native_fqn>(type),
+                            signature.params().size() == 1 ? "/* explicit */ " : "",
+                            bind<write_haxe_consume_params>(signature),
+                            type);
                     }
                 }
             }
@@ -3038,9 +3059,11 @@ struct WINRT_IMPL_EMPTY_BASES produce_dispatch_to_overridable<T, D, %>
                     auto& params = signature.params();
                     params.resize(params.size() - 2);
 
-                    w.write("    %function new(%);\n",
-                        signature.params().size() == 1 ? "/* explicit */ " : "//",
-                        bind<write_haxe_consume_params>(signature));
+                    w.write("    %    %static overload function make(%): %;\n",
+                        bind<write_haxe_native_fqn>(type),
+                        signature.params().size() == 1 ? "/* explicit */ " : "",
+                        bind<write_haxe_consume_params>(signature),
+                        type);
                 }
             }
         }
@@ -3396,35 +3419,19 @@ struct WINRT_IMPL_EMPTY_BASES produce_dispatch_to_overridable<T, D, %>
 
     static void write_haxe_class_meta(haxe_writer& w)
     {
-        w.write("\n@:valueType");
+        w.write("@:valueType\n");
         //w.write("winrt::%::%\")", ns, remove_tick(type.TypeName()));
-    }
-
-    static void write_haxe_native_fqn(haxe_writer& w, TypeDef const& type)
-    {
-        std::string ns{ type.TypeNamespace() };
-
-        size_t pos = 0;
-        while ((pos = ns.find(".", pos)) != std::string::npos)
-        {
-            ns.replace(pos, 1, "::");
-            pos += 2;
-        }
-
-        w.write("\n@:native(\"");
-        w.write("winrt::%::%\")", ns, remove_tick(type.TypeName()));
     }
 
     static void write_haxe_include(haxe_writer& w, TypeDef const& type)
     {
-        w.write("\n@:include(\"");
-        w.write("winrt/%.h\", true)", type.TypeNamespace());
+        w.write("@:include(\"");
+        w.write("winrt/%.h\", true)\n", type.TypeNamespace());
     }
 
     static void write_haxe_enum(haxe_writer& w, TypeDef const& type)
     {
-        auto format = R"(%%
-enum abstract %(%)
+        auto format = R"(%%enum abstract %(%)
 {
 %}
 )";
@@ -3443,8 +3450,7 @@ enum abstract %(%)
         auto type_name = type.TypeName();
         auto factories = get_factories(w, type);
 
-        auto format = R"(%%%
-extern class % extends % 
+        auto format = R"(%%%extern class % extends % 
 {
 %%}
 )";
@@ -3497,7 +3503,7 @@ extern class %
 
     static void write_haxe_package(haxe_writer& w, std::string_view const& package)
     {
-        w.write("package winrt.%;\n", package);
+        w.write("package winrt.%;\n\n", package);
     }
 
     static void write_haxe_static_declaration(haxe_writer& w, std::pair<std::string const, factory_info> const& factory, TypeDef const& type)
@@ -3571,8 +3577,7 @@ extern class %
         auto type_name = type.TypeName();
         auto factories = get_factories(w, type);
 
-        auto format = R"(%%
-extern class %
+        auto format = R"(%%extern class %
 {
 %}
 )";
@@ -3615,8 +3620,7 @@ extern class %
 
         if (empty(generics))
         {
-            auto format2 = R"(%%%
-extern class % extends winrt.windows.foundation.IInspectable
+            auto format2 = R"(%%%extern class % extends winrt.windows.foundation.IInspectable
 {
 %}
 )";
