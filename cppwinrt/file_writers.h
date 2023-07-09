@@ -209,6 +209,11 @@ namespace cppwinrt
                 std::string prefix{ name.substr(0, backtick) };
                 ifaces[prefix].push_back(iface);
             }
+            else
+            {
+                std::string sname{ name };
+                ifaces[sname].push_back(iface);
+            }
         }
 
         for (const auto& [name, types] : ifaces)
