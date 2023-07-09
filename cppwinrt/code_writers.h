@@ -3445,33 +3445,7 @@ struct WINRT_IMPL_EMPTY_BASES produce_dispatch_to_overridable<T, D, %>
             bind_each<write_haxe_enum_field>(fields));
     }
 
-    static void write_haxe_normal_class(haxe_writer& w, TypeDef const& type, coded_index<TypeDefOrRef> const& base_type)
-    {
-        auto type_name = type.TypeName();
-        auto factories = get_factories(w, type);
 
-        auto format = R"(%%%extern class % extends % 
-{
-%%}
-)";
-        w.write(format,
-            write_haxe_class_meta,
-            bind<write_haxe_include>(type),
-            bind<write_haxe_native_fqn>(type),
-            type_name,
-            base_type,
-            bind<write_haxe_constructor_declarations>(type, factories),
-            bind_each<write_haxe_consume_declaration>(type.MethodList())
-        );
-        /*w.write(format,
-            type_name,
-            base_type,
-            bind<write_class_base>(type),
-            bind<write_class_requires>(type),
-            bind<write_haxe_constructor_declarations>(type, factories),
-            bind<write_class_usings>(type),
-            bind_each<write_static_declaration>(factories, type));*/
-    }
 
     static void write_haxe_struct(haxe_writer& w, TypeDef const& type)
     {
@@ -3570,6 +3544,35 @@ extern class %
 //                }
 //            }
         }
+    }
+
+    static void write_haxe_normal_class(haxe_writer& w, TypeDef const& type, coded_index<TypeDefOrRef> const& base_type)
+    {
+        auto type_name = type.TypeName();
+        auto factories = get_factories(w, type);
+
+        auto format = R"(%%%extern class % extends % 
+{
+%%%}
+)";
+        w.write(format,
+            write_haxe_class_meta,
+            bind<write_haxe_include>(type),
+            bind<write_haxe_native_fqn>(type),
+            type_name,
+            base_type,
+            bind<write_haxe_constructor_declarations>(type, factories),
+            bind_each<write_haxe_consume_declaration>(type.MethodList()),
+            bind_each<write_haxe_static_declaration>(factories, type)
+        );
+        /*w.write(format,
+            type_name,
+            base_type,
+            bind<write_class_base>(type),
+            bind<write_class_requires>(type),
+            bind<write_haxe_constructor_declarations>(type, factories),
+            bind<write_class_usings>(type),
+            bind_each<write_static_declaration>(factories, type));*/
     }
 
     static void write_haxe_static_class(haxe_writer& w, TypeDef const& type)
