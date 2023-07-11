@@ -3546,12 +3546,31 @@ extern class %
         }
     }
 
+    static void write_haxe_class_extends(haxe_writer& w, TypeDef const& type)
+    {
+        for (auto&& base : get_bases(type))
+        {
+            w.write("\n    extends %", base);
+            break;
+        }
+    }
+
+    static void write_haxe_class_implements(haxe_writer& w, TypeDef const& type)
+    {
+        cppwinrt::get_interfaces_t ifaces;
+        get_haxe_interfaces_impl(w, ifaces, false, false, false, {}, type.InterfaceImpl());
+        for (auto&& iface : ifaces)
+        {
+            w.write("\n    implements %", iface.first);
+        }
+    }
+
     static void write_haxe_normal_class(haxe_writer& w, TypeDef const& type, coded_index<TypeDefOrRef> const& base_type)
     {
         auto type_name = type.TypeName();
         auto factories = get_factories(w, type);
 
-        auto format = R"(%%%extern class % extends % 
+        auto format = R"(%%%extern class %%%
 {
 %%%}
 )";
@@ -3560,7 +3579,9 @@ extern class %
             bind<write_haxe_include>(type),
             bind<write_haxe_native_fqn>(type),
             type_name,
-            base_type,
+            bind<write_haxe_class_extends>(type),
+            bind<write_haxe_class_implements>(type),
+            //base_type,
             bind<write_haxe_constructor_declarations>(type, factories),
             bind_each<write_haxe_consume_declaration>(type.MethodList()),
             bind_each<write_haxe_static_declaration>(factories, type)
@@ -3623,7 +3644,7 @@ extern class %
 
         if (empty(generics))
         {
-            auto format2 = R"(%%%extern class % extends winrt.windows.foundation.IInspectable
+            auto format2 = R"(%%%extern interface % extends winrt.windows.foundation.IInspectable
 {
 %}
 )";
@@ -3658,7 +3679,7 @@ extern class %
             type_name = remove_tick(type_name);
 
             auto format = R"(%%%
-extern class %<%> extends winrt.windows.foundation.IInspectable
+extern interface %<%> extends winrt.windows.foundation.IInspectable
 {
 %}
 )";

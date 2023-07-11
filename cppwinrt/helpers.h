@@ -664,6 +664,78 @@ namespace cppwinrt
         }
     };
 
+    static void get_haxe_interfaces_impl(haxe_writer& w, get_interfaces_t& result, bool defaulted, bool overridable, bool base, std::vector<std::vector<std::string>> const& generic_param_stack, std::pair<InterfaceImpl, InterfaceImpl>&& children)
+    {
+        for (auto&& impl : children)
+        {
+            interface_info info;
+            auto type = impl.Interface();
+            auto name = w.write_temp("%", type);
+            info.is_default = has_attribute(impl, "Windows.Foundation.Metadata", "DefaultAttribute");
+            info.defaulted = !base && (defaulted || info.is_default);
+
+            {
+                // This is for correctness rather than an optimization (but helps performance as well).
+                // If the interface was not previously inserted, carry on and recursively insert it.
+                // If a previous insertion was defaulted we're done as it is correctly captured.
+                // If a newly discovered instance of a previous insertion is not defaulted, we're also done.
+                // If it was previously captured as non-defaulted but now found as defaulted, we carry on and
+                // rediscover it as we need it to be defaulted recursively.
+
+                if (auto found = find(result, name))
+                {
+                    if (found->defaulted || !info.defaulted)
+                    {
+                        continue;
+                    }
+                }
+            }
+
+            info.overridable = overridable || has_attribute(impl, "Windows.Foundation.Metadata", "OverridableAttribute");
+            info.base = base;
+            info.generic_param_stack = generic_param_stack;
+            haxe_writer::generic_param_guard guard;
+
+            switch (type.type())
+            {
+            case TypeDefOrRef::TypeDef:
+            {
+                info.type = type.TypeDef();
+                break;
+            }
+            case TypeDefOrRef::TypeRef:
+            {
+                info.type = find_required(type.TypeRef());
+                w.add_depends(info.type);
+                break;
+            }
+            case TypeDefOrRef::TypeSpec:
+            {
+                auto type_signature = type.TypeSpec().Signature();
+
+                std::vector<std::string> names;
+
+                for (auto&& arg : type_signature.GenericTypeInst().GenericArgs())
+                {
+                    names.push_back(w.write_temp("%", arg));
+                }
+
+                info.generic_param_stack.push_back(std::move(names));
+
+                guard = w.push_generic_params(type_signature.GenericTypeInst());
+                auto signature = type_signature.GenericTypeInst();
+                info.type = find_required(signature.GenericType());
+
+                break;
+            }
+            }
+
+            info.exclusive = has_attribute(info.type, "Windows.Foundation.Metadata", "ExclusiveToAttribute");
+            get_haxe_interfaces_impl(w, result, info.defaulted, info.overridable, base, info.generic_param_stack, info.type.InterfaceImpl());
+            insert_or_assign(result, name, std::move(info));
+        }
+    };
+
     static auto get_interfaces(writer& w, TypeDef const& type)
     {
         w.abi_types = false;
