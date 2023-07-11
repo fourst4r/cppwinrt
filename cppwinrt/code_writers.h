@@ -3006,7 +3006,7 @@ struct WINRT_IMPL_EMPTY_BASES produce_dispatch_to_overridable<T, D, %>
         }
     }
 
-    static void write_haxe_native_fqn(haxe_writer& w, TypeDef const& type)
+    static std::string get_colonized_ns(TypeDef const& type)
     {
         std::string ns{ type.TypeNamespace() };
 
@@ -3017,8 +3017,13 @@ struct WINRT_IMPL_EMPTY_BASES produce_dispatch_to_overridable<T, D, %>
             pos += 2;
         }
 
+        return ns;
+    }
+
+    static void write_haxe_native_fqn(haxe_writer& w, TypeDef const& type)
+    {
         w.write("@:native(\"");
-        w.write("winrt::%::%\")\n", ns, remove_tick(type.TypeName()));
+        w.write("winrt::%::%\")\n", get_colonized_ns(type), remove_tick(type.TypeName()));
     }
 
     static void write_haxe_constructor_declarations(haxe_writer& w, TypeDef const& type, std::map<std::string, factory_info> const& factories)
@@ -3408,19 +3413,18 @@ struct WINRT_IMPL_EMPTY_BASES produce_dispatch_to_overridable<T, D, %>
 
     static void write_haxe_enum_field(haxe_writer& w, Field const& field)
     {
-        auto format = R"(    final % = %;
-)";
+        auto type = field.Parent();
 
         if (auto constant = field.Constant())
         {
-            w.write(format, field.Name(), *constant);
+            w.write("    @:native(\"");
+            w.write("winrt::%::%::%\") final %;\n", get_colonized_ns(type), remove_tick(type.TypeName()), field.Name(), field.Name());
         }
     }
 
     static void write_haxe_class_meta(haxe_writer& w)
     {
         w.write("@:valueType\n");
-        //w.write("winrt::%::%\")", ns, remove_tick(type.TypeName()));
     }
 
     static void write_haxe_include(haxe_writer& w, TypeDef const& type)
@@ -3431,7 +3435,7 @@ struct WINRT_IMPL_EMPTY_BASES produce_dispatch_to_overridable<T, D, %>
 
     static void write_haxe_enum(haxe_writer& w, TypeDef const& type)
     {
-        auto format = R"(%%enum abstract %(%)
+        auto format = R"(%%extern enum abstract %(%)
 {
 %}
 )";
