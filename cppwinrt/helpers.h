@@ -257,7 +257,7 @@ namespace cppwinrt
 
     static bool is_set_overload(MethodDef const& method)
     {
-        return method.SpecialName() && starts_with(method.Name(), "set_");
+        return method.SpecialName() && starts_with(method.Name(), "put_");
     }
 
     static bool is_noexcept(MethodDef const& method)

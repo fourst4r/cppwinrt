@@ -2968,6 +2968,24 @@ struct WINRT_IMPL_EMPTY_BASES produce_dispatch_to_overridable<T, D, %>
         }
     }
 
+    static bool haxe_method_needs_overload(MethodDef const& method)
+    {
+        if (is_get_overload(method) || is_set_overload(method) || is_add_overload(method) || is_remove_overload(method))
+            return true;
+
+        auto name = method.Name();
+        auto methods = method.Parent().MethodList();
+        int n_overloads = 0;
+
+        for (auto& m : methods)
+        {
+            if (m.Name() == name) 
+                n_overloads++;
+        }
+
+        return n_overloads > 1;
+    }
+
     static void write_haxe_consume_declaration(haxe_writer& w, MethodDef const& method)
     {
         method_signature signature{ method };
@@ -2978,17 +2996,13 @@ struct WINRT_IMPL_EMPTY_BASES produce_dispatch_to_overridable<T, D, %>
         if (method_name == ".ctor")
             return;
 
-        w.write("    overload function %(%): %;\n",
+        w.write("    %%function %(%): %;\n",
+            is_noexcept(method) ? "@:noExcept " : "",
+            haxe_method_needs_overload(method) ? "overload " : "",
             method_name,
             bind<write_haxe_consume_params>(signature),
             signature.return_signature()
         );
-
-        /*     w.write("        %auto %(%) const%; // consume_declaration \n",
-                 is_get_overload(method) ? "[[nodiscard]] " : "",
-                 method_name,
-                 bind<write_consume_params>(signature),
-                 is_noexcept(method) ? " noexcept" : "");*/
 
         if (is_add_overload(method))
         {
@@ -3510,7 +3524,8 @@ extern class %
                 );
             }*/
 
-            w.write("    static overload function %(%): %;\n",
+            w.write("    static %function %(%): %;\n",
+                haxe_method_needs_overload(method) ? "overload " : "",
                 method_name,
                 bind<write_haxe_consume_params>(signature),
                 signature.return_signature());
