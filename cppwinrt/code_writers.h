@@ -3043,6 +3043,8 @@ struct WINRT_IMPL_EMPTY_BASES produce_dispatch_to_overridable<T, D, %>
     static void write_haxe_constructor_declarations(haxe_writer& w, TypeDef const& type, std::map<std::string, factory_info> const& factories)
     {
         auto type_name = type.TypeName();
+        // hoop-jumping to have at least one real constructor, the rest are make()
+        bool first = true;
 
         for (auto&& [factory_name, factory] : factories)
         {
@@ -3051,22 +3053,41 @@ struct WINRT_IMPL_EMPTY_BASES produce_dispatch_to_overridable<T, D, %>
                 if (!factory.type)
                 {
                     // empty constructor
-                    w.write("    function new();\n");
+                    if (first)
+                    {
+                        first = false;
+                        w.write("    function new();\n");
+                    }
+                    else
+                    {
+                        w.write("    %    static overload function make(): %;\n",
+                            bind<write_haxe_native_fqn>(type),
+                            type);
+                    }
                 }
                 else
                 {
                     for (auto&& method : factory.type.MethodList())
                     {
                         method_signature signature{ method };
-                        
-                        /*w.write("    @:native(\"");
-                        w.write("%\")\n", type);*/
-                        
-                        w.write("    %    %static overload function make(%): %;\n",
-                            bind<write_haxe_native_fqn>(type),
-                            signature.params().size() == 1 ? "/* explicit */ " : "",
-                            bind<write_haxe_consume_params>(signature),
-                            type);
+
+                        // we have to do this because you can't overload extern constructors in haxe...
+                        // i should use @:overload in the future because technically the first constructor could change
+                        if (first)
+                        {
+                            first = false;
+                            w.write("    %function new(%);\n",
+                                signature.params().size() == 1 ? "/* explicit */ " : "",
+                                bind<write_haxe_consume_params>(signature));
+                        }
+                        else
+                        {
+                            w.write("    %    %static overload function make(%): %;\n",
+                                bind<write_haxe_native_fqn>(type),
+                                signature.params().size() == 1 ? "/* explicit */ " : "",
+                                bind<write_haxe_consume_params>(signature),
+                                type);
+                        }
                     }
                 }
             }
@@ -3078,11 +3099,23 @@ struct WINRT_IMPL_EMPTY_BASES produce_dispatch_to_overridable<T, D, %>
                     auto& params = signature.params();
                     params.resize(params.size() - 2);
 
-                    w.write("    %    %static overload function make(%): %;\n",
-                        bind<write_haxe_native_fqn>(type),
-                        signature.params().size() == 1 ? "/* explicit */ " : "",
-                        bind<write_haxe_consume_params>(signature),
-                        type);
+                    // we have to do this because you can't overload extern constructors in haxe...
+                    // i should use @:overload in the future because technically the first constructor could change
+                    if (first)
+                    {
+                        first = false;
+                        w.write("    %function new(%);\n",
+                            signature.params().size() == 1 ? "/* explicit */ " : "",
+                            bind<write_haxe_consume_params>(signature));
+                    }
+                    else
+                    {
+                        w.write("    %    %static overload function make(%): %;\n",
+                            bind<write_haxe_native_fqn>(type),
+                            signature.params().size() == 1 ? "/* explicit */ " : "",
+                            bind<write_haxe_consume_params>(signature),
+                            type);
+                    }
                 }
             }
         }
