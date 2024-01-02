@@ -2979,6 +2979,9 @@ struct WINRT_IMPL_EMPTY_BASES produce_dispatch_to_overridable<T, D, %>
 
         for (auto& m : methods)
         {
+            // FIXME: should be something like
+            // if (method.SpecialName() && m.SpecialName() && name.SubstringAfter('_') == m.Name().SubstringAfter('_') || m.Name() == name)
+            // and then remove the 'if' at the beginning of the method
             if (m.Name() == name) 
                 n_overloads++;
         }
